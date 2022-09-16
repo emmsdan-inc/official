@@ -1,4 +1,4 @@
-name: 'Production Deployment to app.kirgawa.com'
+name: 'Production Deployment to emmsdan.ltd'
 
 on:
   push:
@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Copy to Build File
+        run: cp -r src/ build/
+
       - name: Deploy to netlify
         uses: netlify/actions/cli@master
         env:
