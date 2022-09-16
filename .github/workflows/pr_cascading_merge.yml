@@ -1,0 +1,77 @@
+name: Cascading Merge
+
+on:
+  # See docs
+  # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#onpushpull_requestpull_request_targetpathspaths-ignore
+  push:
+    branches:
+      - 'master'
+      - 'main'
+      - 'dev'
+jobs:
+  cascading_merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/github-script@v5
+        name: Cascading Merge
+        id: cascading_merge
+        with:
+          github-token: ${{ secrets.REPO_TOKEN }}
+          script: |
+            // Fetch all open PRs against master
+            const repoDefaultBranch = context.payload.repository
+              ? context.payload.repository.default_branch
+              : "master";
+            const pullRequests = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: repoDefaultBranch,
+              state: "open",
+              // 100 is the max per_page.
+              // RIP in peace if we have more than 100 open pull requests
+              per_page: 100,
+              page: 1,
+            });
+
+            console.log(`${pullRequests.data.length} pull-requests open against ${repoDefaultBranch}`);
+            if (pullRequests.data.length === 0) {
+              return;
+            }
+
+            // Perform cascading merge down to branches with open PRs against master
+            // ideally we could use Promise.allSettled()
+            await Promise.all(
+              pullRequests.data.map(async (pr) => {
+                try {
+                  console.log(`${pr.head.ref}: attempting to update`);
+                  const mergeCommit = await github.rest.repos.merge({
+                    repo: context.repo.repo,
+                    owner: context.repo.owner,
+                    base: pr.head.ref,
+                    head: repoDefaultBranch,
+                  });
+                  console.log(`${pr.head.ref}: updated`);
+                } catch (error) {
+                  if (error.status === 409) {
+                    // context.repo.owner
+                    console.log(`${pr.head.ref}: encountered merge conflict`);
+                    const comment = await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: `@${pr.user.login} Automatic merge from ${repoDefaultBranch} failed; fix conflicts and then commit the result.`,
+                    });
+                  } else {
+                    console.log(`${pr.head.ref}: encountered unknown error`, error);
+                    const comment = await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: `@${pr.user.login} Automatic merge from ${repoDefaultBranch} failed with an unexpected error.
+                      Fix conflicts and then commit the result.`,
+                    });
+                  }
+                }
+              })
+            );

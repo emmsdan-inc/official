@@ -1,0 +1,23 @@
+name: 'Production Deployment to app.kirgawa.com'
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to netlify
+        uses: netlify/actions/cli@master
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN_2 }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_OFFICIAL }}
+        with:
+          args: deploy --dir=build --prod
+          secrets: '["NETLIFY_AUTH_TOKEN_2", "NETLIFY_SITE_ID_OFFICIAL"]'
+
+      - name: Deployment seems to be successful
+        run: sh logo.sh
